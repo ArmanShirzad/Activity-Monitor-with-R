@@ -1,0 +1,57 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: activitymonitor_db
+    environment:
+      POSTGRES_USER: activitymonitor
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: activitymonitor
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: activitymonitor_redis
+    ports:
+      - "6379:6379"
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: activitymonitor_backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://activitymonitor:changeme@postgres:5432/activitymonitor
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - ./backend/.env
+
+  # Frontend (React)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: activitymonitor_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+
