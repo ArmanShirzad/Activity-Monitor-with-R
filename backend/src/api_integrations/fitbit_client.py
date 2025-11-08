@@ -7,6 +7,7 @@ import requests
 from typing import Dict, List, Optional
 import pandas as pd
 from datetime import datetime, timedelta
+import time
 
 
 class FitbitClient:
@@ -68,26 +69,110 @@ class FitbitClient:
         
         return False
     
-    def get_daily_activity_summary(self, date: str) -> Dict:
+    def _make_request_with_retry(self, url: str, max_retries: int = 2, delay: float = 5.0) -> requests.Response:
         """
-        Get daily activity summary for a specific date
+        Make HTTP request with basic retry logic
+        Note: Rate limits are server-side and cannot be bypassed with retries
+        
+        Args:
+            url: URL to request
+            max_retries: Maximum number of retries (limited to avoid wasting time)
+            delay: Delay between retries (seconds)
+            
+        Returns:
+            Response object
+        """
+        for attempt in range(max_retries):
+            response = requests.get(url, headers=self._get_headers())
+            
+            if response.status_code == 401:
+                # Token expired, refresh and retry once
+                if self.refresh_access_token():
+                    response = requests.get(url, headers=self._get_headers())
+            
+            if response.status_code == 429:
+                # Rate limited - this is server-side, retrying won't help much
+                # Only retry once with a short delay in case it's a temporary spike
+                if attempt < max_retries - 1:
+                    time.sleep(delay)
+                    continue
+                else:
+                    # Rate limit is real - raise error immediately
+                    response.raise_for_status()
+            
+            if response.status_code == 200:
+                return response
+            
+            # For other errors, raise immediately
+            if response.status_code not in [429, 401]:
+                response.raise_for_status()
+        
+        response.raise_for_status()
+        return response
+    
+    def get_daily_activity_summary(self, date: str, include_intraday: bool = False) -> Dict:
+        """
+        Get daily activity summary with optional intraday step data
         
         Args:
             date: Date in format 'YYYY-MM-DD'
+            include_intraday: Whether to fetch detailed intraday data (uses more API calls)
             
         Returns:
             Dictionary with activity data
         """
+        # Get daily summary with retry logic
         url = f"{self.BASE_URL}/user/-/activities/date/{date}.json"
-        response = requests.get(url, headers=self._get_headers())
+        response = self._make_request_with_retry(url)
+        daily_data = response.json()
         
-        if response.status_code == 401:
-            # Token expired, refresh and retry
-            if self.refresh_access_token():
-                response = requests.get(url, headers=self._get_headers())
+        # Only fetch intraday data if requested (to save API calls)
+        if include_intraday:
+            # Wait longer between requests to avoid rate limits
+            time.sleep(2.0)  # Increased delay
+            intraday_url = f"{self.BASE_URL}/user/-/activities/steps/date/{date}/1d/1min.json"
+            try:
+                intraday_response = self._make_request_with_retry(intraday_url)
+                if intraday_response.status_code == 200:
+                    intraday_data = intraday_response.json()
+                    # Merge intraday data into daily data
+                    if 'activities-steps-intraday' in intraday_data:
+                        daily_data['activities-steps-intraday'] = intraday_data['activities-steps-intraday']
+            except requests.exceptions.HTTPError as e:
+                # If intraday fails due to rate limit, continue with daily summary only
+                if "429" in str(e) or "Rate limit" in str(e):
+                    print(f"Warning: Could not fetch intraday data for {date} due to rate limits. Using daily summary only.")
+                else:
+                    raise
         
-        response.raise_for_status()
-        return response.json()
+        return daily_data
+    
+    def get_activity_time_series_batch(self, start_date: str, end_date: str) -> List[Dict]:
+        """
+        Get activity time series data for a date range (more efficient than daily calls)
+        Note: This endpoint also counts toward rate limits
+        
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+            
+        Returns:
+            List of daily activity summaries
+        """
+        # Use time-series API which is more efficient for ranges
+        # But still subject to rate limits
+        url = f"{self.BASE_URL}/user/-/activities/steps/date/{start_date}/{end_date}.json"
+        try:
+            response = self._make_request_with_retry(url)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('activities-steps', [])
+        except requests.exceptions.HTTPError as e:
+            if "429" in str(e) or "Rate limit" in str(e):
+                # Return empty list if rate limited - will fall back to daily calls
+                return []
+            raise
+        return []
     
     def get_heart_rate_data(self, date: str) -> Dict:
         """Get heart rate data for a specific date"""

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import Dashboard from './components/Dashboard';
 import PlatformSelector from './components/PlatformSelector';
@@ -14,30 +14,28 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    // Fetch supported platforms
-    fetchPlatforms();
-  }, []);
-
   const fetchPlatforms = async () => {
     try {
       const response = await axios.get(`${API_URL}/api/v1/platforms`);
       setPlatforms(response.data.platforms);
+      return response.data.platforms;
     } catch (err) {
       setError('Failed to load platforms');
       console.error(err);
+      return [];
     }
   };
 
-  const handlePlatformConnect = async (platform, credentials) => {
+  const handlePlatformConnect = useCallback(async (platform, credentials) => {
     setLoading(true);
     setError(null);
     
     try {
-      // Calculate date range (last 30 days)
+      // Calculate date range (last 3 days to minimize API calls)
+      // Fitbit rate limit is 150 requests/hour - server-side restriction
       const endDate = new Date();
       const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 30);
+      startDate.setDate(startDate.getDate() - 3);
       
       const response = await axios.post(`${API_URL}/api/v1/activity/analyze`, {
         platform: platform.id,
@@ -55,7 +53,42 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Check for OAuth callback parameters first
+    const urlParams = new URLSearchParams(window.location.search);
+    const accessToken = urlParams.get('access_token');
+    const refreshToken = urlParams.get('refresh_token');
+    const platform = urlParams.get('platform');
+    const errorParam = urlParams.get('error');
+    
+    if (errorParam) {
+      setError(`OAuth Error: ${urlParams.get('error_description') || errorParam}`);
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      fetchPlatforms();
+      return;
+    }
+    
+    // Fetch supported platforms
+    fetchPlatforms().then((platformsList) => {
+      if (accessToken && refreshToken && platform) {
+        // OAuth callback successful - find platform and connect
+        const platformObj = platformsList.find(p => p.id === platform);
+        if (platformObj) {
+          handlePlatformConnect(
+            platformObj,
+            { accessToken, refreshToken }
+          );
+        }
+        
+        // Clean URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    });
+  }, [handlePlatformConnect]);
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 function PlatformSelector({ platforms, onPlatformSelect, loading }) {
   const [selectedPlatform, setSelectedPlatform] = useState(null);
   const [credentials, setCredentials] = useState({});
@@ -10,6 +12,14 @@ function PlatformSelector({ platforms, onPlatformSelect, loading }) {
 
   const handleConnect = () => {
     if (selectedPlatform) {
+      // For Fitbit, use OAuth flow if supported
+      if (selectedPlatform.id === 'fitbit' && selectedPlatform.supports_direct_integration) {
+        // Redirect to OAuth authorization endpoint
+        window.location.href = `${API_URL}/api/v1/auth/fitbit/authorize`;
+        return;
+      }
+      
+      // For other platforms or manual token entry, use direct connection
       onPlatformSelect(selectedPlatform, credentials);
     }
   };
@@ -69,41 +79,92 @@ function PlatformSelector({ platforms, onPlatformSelect, loading }) {
             Connect to {selectedPlatform.name}
           </h3>
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Access Token (Optional)
-              </label>
-              <input
-                type="text"
-                placeholder="Enter access token"
-                value={credentials.accessToken || ''}
-                onChange={(e) => handleCredentialChange('accessToken', e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
+          {selectedPlatform.id === 'fitbit' && selectedPlatform.supports_direct_integration ? (
+            <div className="space-y-4">
+              <p className="text-gray-600 text-sm mb-4">
+                Click the button below to securely connect your Fitbit account. You will be redirected to Fitbit to authorize access.
+              </p>
+              <button
+                onClick={handleConnect}
+                disabled={loading}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:bg-gray-400"
+              >
+                {loading ? 'Connecting...' : 'Connect with Fitbit'}
+              </button>
+              <p className="text-xs text-gray-500 mt-2">
+                Or enter tokens manually below
+              </p>
+              <div className="border-t pt-4 mt-4">
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Access Token (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter access token"
+                    value={credentials.accessToken || ''}
+                    onChange={(e) => handleCredentialChange('accessToken', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Refresh Token (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Enter refresh token"
+                    value={credentials.refreshToken || ''}
+                    onChange={(e) => handleCredentialChange('refreshToken', e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <button
+                  onClick={() => onPlatformSelect(selectedPlatform, credentials)}
+                  disabled={loading || (!credentials.accessToken && !credentials.refreshToken)}
+                  className="w-full bg-gray-600 text-white py-3 rounded-lg font-semibold hover:bg-gray-700 transition-colors disabled:bg-gray-400"
+                >
+                  {loading ? 'Connecting...' : 'Use Manual Tokens'}
+                </button>
+              </div>
             </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Access Token (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter access token"
+                  value={credentials.accessToken || ''}
+                  onChange={(e) => handleCredentialChange('accessToken', e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Refresh Token (Optional)
-              </label>
-              <input
-                type="text"
-                placeholder="Enter refresh token"
-                value={credentials.refreshToken || ''}
-                onChange={(e) => handleCredentialChange('refreshToken', e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Refresh Token (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter refresh token"
+                  value={credentials.refreshToken || ''}
+                  onChange={(e) => handleCredentialChange('refreshToken', e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <button
+                onClick={handleConnect}
+                disabled={loading}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:bg-gray-400"
+              >
+                {loading ? 'Connecting...' : 'Connect & Analyze'}
+              </button>
             </div>
-
-            <button
-              onClick={handleConnect}
-              disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:bg-gray-400"
-            >
-              {loading ? 'Connecting...' : 'Connect & Analyze'}
-            </button>
-          </div>
+          )}
         </div>
       )}
     </div>

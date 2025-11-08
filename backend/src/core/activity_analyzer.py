@@ -54,11 +54,11 @@ class ActivityAnalyzer:
         daily_totals = self.calculate_daily_totals()
         
         return {
-            'mean_steps': daily_totals['steps'].mean(),
-            'median_steps': daily_totals['steps'].median(),
-            'min_steps': daily_totals['steps'].min(),
-            'max_steps': daily_totals['steps'].max(),
-            'std_steps': daily_totals['steps'].std()
+            'mean_steps': float(daily_totals['steps'].mean()),
+            'median_steps': float(daily_totals['steps'].median()),
+            'min_steps': float(daily_totals['steps'].min()),
+            'max_steps': float(daily_totals['steps'].max()),
+            'std_steps': float(daily_totals['steps'].std())
         }
     
     def calculate_interval_means(self) -> pd.DataFrame:
@@ -140,8 +140,8 @@ class ActivityAnalyzer:
         return {
             'weekday': weekday_means,
             'weekend': weekend_means,
-            'weekday_total_avg': weekday_data['steps'].mean(),
-            'weekend_total_avg': weekend_data['steps'].mean()
+            'weekday_total_avg': float(weekday_data['steps'].mean()),
+            'weekend_total_avg': float(weekend_data['steps'].mean())
         }
     
     def get_missing_data_summary(self) -> Dict[str, int]:
@@ -160,14 +160,14 @@ class ActivityAnalyzer:
         daily_data = self.data.groupby('date').agg({
             'steps': lambda x: x.isna().all()
         })
-        missing_days = daily_data['steps'].sum()
+        missing_days = int(daily_data['steps'].sum())
         
         return {
             'total_rows': int(total_rows),
             'missing_steps': int(missing_steps),
             'missing_intervals': int(missing_intervals),
-            'missing_days': int(missing_days),
-            'data_completeness': float((1 - missing_steps / total_rows) * 100)
+            'missing_days': missing_days,
+            'data_completeness': float((1 - missing_steps / total_rows) * 100) if total_rows > 0 else 0.0
         }
     
     def generate_summary_report(self) -> Dict:
@@ -192,8 +192,14 @@ class ActivityAnalyzer:
             'weekday_patterns': {
                 'weekday_avg': float(weekday_patterns['weekday_total_avg']),
                 'weekend_avg': float(weekday_patterns['weekend_total_avg']),
-                'weekday_intervals': weekday_patterns['weekday'].to_dict('records'),
-                'weekend_intervals': weekday_patterns['weekend'].to_dict('records')
+                'weekday_intervals': [
+                    {'interval': int(row['interval']), 'steps': float(row['steps'])}
+                    for _, row in weekday_patterns['weekday'].iterrows()
+                ],
+                'weekend_intervals': [
+                    {'interval': int(row['interval']), 'steps': float(row['steps'])}
+                    for _, row in weekday_patterns['weekend'].iterrows()
+                ]
             },
             'data_quality': missing_summary,
             'time_span': {
