@@ -1,5 +1,5 @@
 # Activity Monitor with R
-
+targeted for commercial use cases later.
 Personal Activity Monitoring Project  
 Arman Shirzad  
 07/15/2023
